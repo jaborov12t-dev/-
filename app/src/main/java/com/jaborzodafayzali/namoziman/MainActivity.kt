@@ -18,23 +18,36 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import java.util.Calendar
+import java.util.TimeZone
 
 class MainActivity : ComponentActivity() {
 
     private val locationPermission =
         registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
-        ) { }
+        ) { granted ->
+
+            if (
+                granted[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                granted[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+            ) {
+                loadLocation()
+            }
+        }
+
+    private var locationHelper: LocationHelper? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+        locationHelper = LocationHelper(this)
+
+        setContent {
+            NamozimanApp()
+        }
+
+        if (!hasLocationPermission()) {
             locationPermission.launch(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -42,25 +55,70 @@ class MainActivity : ComponentActivity() {
                 )
             )
         }
+    }
 
-        setContent {
-            NamozimanApp()
+    private fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun loadLocation() {
+        locationHelper?.getLocation { location ->
+
+            if (location != null) {
+
+                val timezone =
+                    TimeZone.getDefault().rawOffset / 3600000.0
+
+                val times = PrayerTimesCalculator.calculate(
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    timezone = timezone,
+                    date = Calendar.getInstance()
+                )
+
+                prayerTimes = times
+            }
         }
+    }
+
+    companion object {
+        var prayerTimes by mutableStateOf(
+            PrayerTimes(
+                fajr = "--:--",
+                dhuhr = "--:--",
+                asr = "--:--",
+                maghrib = "--:--",
+                isha = "--:--"
+            )
+        )
     }
 }
 
 @Composable
 fun NamozimanApp() {
 
-    val green = Color(0xFF0B3D32)
     val dark = Color(0xFF071C18)
+    val green = Color(0xFF0B3D32)
     val gold = Color(0xFFD4AF37)
 
+    val times = MainActivity.prayerTimes
+
     MaterialTheme {
+
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(dark),
             color = dark
         ) {
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -88,7 +146,7 @@ fun NamozimanApp() {
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "Душанбе, Тоҷикистон 🇹🇯",
+                    text = "Макон муайян карда мешавад 📍",
                     color = Color.LightGray,
                     fontSize = 16.sp
                 )
@@ -102,6 +160,7 @@ fun NamozimanApp() {
                         containerColor = green
                     )
                 ) {
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -110,7 +169,7 @@ fun NamozimanApp() {
                     ) {
 
                         Text(
-                            text = "Намози навбатӣ",
+                            text = "Вақти намоз",
                             color = Color.LightGray,
                             fontSize = 16.sp
                         )
@@ -118,38 +177,31 @@ fun NamozimanApp() {
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "ШОМ",
+                            text = "Имрӯз",
                             color = gold,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Text(
-                            text = "18:42",
-                            color = Color.White,
-                            fontSize = 38.sp,
+                            fontSize = 30.sp,
                             fontWeight = FontWeight.Bold
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "То намози навбатӣ: 01:24:35",
+                            text = "Вақтҳо аз рӯи ҷойгиршавии шумо ҳисоб мешаванд",
                             color = Color.White,
-                            fontSize = 15.sp
+                            fontSize = 14.sp
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                PrayerTime("Бомдод", "05:12")
-                PrayerTime("Пешин", "12:40")
-                PrayerTime("Аср", "16:25")
-                PrayerTime("Шом", "18:42")
-                PrayerTime("Хуфтан", "20:10")
+                PrayerTime("Бомдод", times.fajr)
+                PrayerTime("Пешин", times.dhuhr)
+                PrayerTime("Аср", times.asr)
+                PrayerTime("Шом", times.maghrib)
+                PrayerTime("Хуфтан", times.isha)
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(25.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -174,13 +226,17 @@ fun NamozimanApp() {
 }
 
 @Composable
-fun PrayerTime(name: String, time: String) {
+fun PrayerTime(
+    name: String,
+    time: String
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
+
         Text(
             text = name,
             color = Color.White,
@@ -197,9 +253,12 @@ fun PrayerTime(name: String, time: String) {
 }
 
 @Composable
-fun FeatureButton(icon: String, title: String) {
+fun FeatureButton(
+    icon: String,
+    title: String
+) {
     Button(
-        onClick = { },
+        onClick = {},
         modifier = Modifier
             .width(145.dp)
             .height(55.dp),
