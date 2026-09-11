@@ -1,181 +1,283 @@
 package com.jaborzodafayzali.namoziman
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
+import java.util.TimeZone
 
-private val DarkGreen = Color(0xFF071C18)
-private val CardGreen = Color(0xFF102923)
-private val Gold = Color(0xFFD6B56A)
-private val White = Color(0xFFF5F3EA)
-private val SoftWhite = Color(0xFFBFC8C3)
+private val DarkBackground = Color(0xFF061512)
+private val CardColor = Color(0xFF0D2420)
+private val CardColor2 = Color(0xFF12312B)
+private val Gold = Color(0xFFD6B35A)
+private val GoldLight = Color(0xFFF0D98A)
+private val Green = Color(0xFF2E8B70)
+private val White = Color(0xFFF7F7F2)
+private val Gray = Color(0xFF9BAFA9)
 
 class MainActivity : ComponentActivity() {
-
-    private lateinit var locationHelper: LocationHelper
-
-    private val locationPermissionLauncher =
-        registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
-        ) {
-        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        locationHelper = LocationHelper(this)
-
         setContent {
-
-            NamozimanApp(
-                requestLocation = {
-
-                    if (!locationHelper.hasPermission()) {
-
-                        locationPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
-                    }
-                }
-            )
+            NamozimanTheme {
+                NamozimanApp()
+            }
         }
     }
 }
 
 @Composable
-fun NamozimanApp(
-    requestLocation: () -> Unit
+fun NamozimanTheme(
+    content: @Composable () -> Unit
 ) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Gold,
+            secondary = Green,
+            background = DarkBackground,
+            surface = CardColor,
+            onPrimary = Color.Black,
+            onBackground = White,
+            onSurface = White
+        ),
+        content = content
+    )
+}
+
+data class CurrentPlace(
+    val city: String,
+    val country: String,
+    val latitude: Double,
+    val longitude: Double
+)
+
+@Composable
+fun NamozimanApp() {
+
+    val context = LocalContext.current
+
+    val locationHelper = remember {
+        LocationHelper(context)
+    }
+
+    var currentPlace by remember {
+        mutableStateOf<CurrentPlace?>(null)
+    }
+
+    var locationLoading by remember {
+        mutableStateOf(false)
+    }
+
+    var locationError by remember {
+        mutableStateOf(false)
+    }
 
     var selectedScreen by remember {
         mutableStateOf(AppScreen.HOME)
     }
 
-    var showNames by remember {
-        mutableStateOf(false)
-    }
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
 
-    var selectedSurah by remember {
-        mutableStateOf<QuranSurah?>(null)
-    }
+            val fine =
+                permissions[Manifest.permission.ACCESS_FINE_LOCATION]
+                    ?: false
 
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Gold,
-            background = DarkGreen,
-            surface = CardGreen
-        )
-    ) {
+            val coarse =
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION]
+                    ?: false
 
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = DarkGreen
-        ) {
+            if (fine || coarse) {
+                locationLoading = true
+                locationError = false
 
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
+                locationHelper.getCurrentLocation { location ->
 
-                Box(
-                    modifier = Modifier.weight(1f)
-                ) {
+                    if (location != null) {
 
-                    when {
+                        val cityInfo = CityHelper.getCity(
+                            context,
+                            location.latitude,
+                            location.longitude
+                        )
 
-                        showNames -> {
+                        currentPlace = CurrentPlace(
+                            city = cityInfo.city,
+                            country = cityInfo.country,
+                            latitude = location.latitude,
+                            longitude = location.longitude
+                        )
 
-                            NamesOfAllahScreen(
-                                onBack = {
-                                    showNames = false
-                                }
-                            )
-                        }
+                        locationLoading = false
 
-                        selectedSurah != null -> {
-
-                            QuranReaderScreen(
-                                surah = selectedSurah!!,
-                                onBack = {
-                                    selectedSurah = null
-                                }
-                            )
-                        }
-
-                        selectedScreen == AppScreen.HOME -> {
-
-                            HomeScreen(
-                                onNamoz = {
-                                    selectedScreen = AppScreen.NAMOZ
-                                },
-                                onQuran = {
-                                    selectedScreen = AppScreen.QURAN
-                                },
-                                onDuas = {
-                                    selectedScreen = AppScreen.DUAS
-                                },
-                                onQibla = {
-                                    selectedScreen = AppScreen.QIBLA
-                                },
-                                onNames = {
-                                    showNames = true
-                                },
-                                onLocation = requestLocation
-                            )
-                        }
-
-                        selectedScreen == AppScreen.NAMOZ -> {
-                            NamozScreen()
-                        }
-
-                        selectedScreen == AppScreen.QURAN -> {
-
-                            QuranScreen(
-                                onOpenSurah = {
-                                    selectedSurah = it
-                                }
-                            )
-                        }
-
-                        selectedScreen == AppScreen.DUAS -> {
-                            DuasScreen()
-                        }
-
-                        selectedScreen == AppScreen.QIBLA -> {
-                            QiblaScreen()
-                        }
+                    } else {
+                        locationLoading = false
+                        locationError = true
                     }
                 }
 
-                if (!showNames && selectedSurah == null) {
+            } else {
+                locationLoading = false
+                locationError = true
+            }
+        }
 
-                    BottomNavigationBar(
-                        selectedScreen = selectedScreen,
-                        onSelect = {
+    fun loadLocation() {
+
+        if (!locationHelper.hasPermission()) {
+
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+
+            return
+        }
+
+        locationLoading = true
+        locationError = false
+
+        locationHelper.getCurrentLocation { location ->
+
+            if (location != null) {
+
+                val cityInfo = CityHelper.getCity(
+                    context,
+                    location.latitude,
+                    location.longitude
+                )
+
+                currentPlace = CurrentPlace(
+                    city = cityInfo.city,
+                    country = cityInfo.country,
+                    latitude = location.latitude,
+                    longitude = location.longitude
+                )
+
+                locationLoading = false
+
+            } else {
+                locationLoading = false
+                locationError = true
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadLocation()
+    }
+
+    DisposableEffect(locationHelper) {
+
+        if (locationHelper.hasPermission()) {
+
+            locationHelper.startLocationUpdates { location ->
+
+                val cityInfo = CityHelper.getCity(
+                    context,
+                    location.latitude,
+                    location.longitude
+                )
+
+                currentPlace = CurrentPlace(
+                    city = cityInfo.city,
+                    country = cityInfo.country,
+                    latitude = location.latitude,
+                    longitude = location.longitude
+                )
+            }
+        }
+
+        onDispose {
+            locationHelper.stopLocationUpdates()
+        }
+    }
+
+    Scaffold(
+        containerColor = DarkBackground,
+        bottomBar = {
+            BottomNavigationBar(
+                selectedScreen = selectedScreen,
+                onSelected = {
+                    selectedScreen = it
+                }
+            )
+        }
+    ) { padding ->
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+
+            when (selectedScreen) {
+
+                AppScreen.HOME -> {
+                    HomeScreen(
+                        place = currentPlace,
+                        loading = locationLoading,
+                        locationError = locationError,
+                        onRefreshLocation = {
+                            loadLocation()
+                        },
+                        onOpen = {
                             selectedScreen = it
+                        }
+                    )
+                }
+
+                AppScreen.NAMOZ -> {
+                    NamozScreen()
+                }
+
+                AppScreen.QURAN -> {
+                    QuranScreen()
+                }
+
+                AppScreen.DUAS -> {
+                    DuasScreen()
+                }
+
+                AppScreen.QIBLA -> {
+
+                    QiblaScreen(
+                        place = currentPlace,
+                        onRefreshLocation = {
+                            loadLocation()
                         }
                     )
                 }
@@ -186,213 +288,54 @@ fun NamozimanApp(
 
 @Composable
 fun HomeScreen(
-    onNamoz: () -> Unit,
-    onQuran: () -> Unit,
-    onDuas: () -> Unit,
-    onQibla: () -> Unit,
-    onNames: () -> Unit,
-    onLocation: () -> Unit
+    place: CurrentPlace?,
+    loading: Boolean,
+    locationError: Boolean,
+    onRefreshLocation: () -> Unit,
+    onOpen: (AppScreen) -> Unit
 ) {
 
-    val prayerTimes = remember {
-
-        PrayerTimesCalculator.calculate(
-            latitude = 38.5598,
-            longitude = 68.7870,
-            timezone = 5.0,
-            date = Calendar.getInstance()
-        )
+    var now by remember {
+        mutableStateOf(Calendar.getInstance())
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    LaunchedEffect(Unit) {
 
-        item {
+        while (true) {
 
-            Text(
-                text = "Ассалому алайкум 🤍",
-                color = White,
-                fontSize = 27.sp,
-                fontWeight = FontWeight.Bold
-            )
+            now = Calendar.getInstance()
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        onLocation()
-                    },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-
-                Text(
-                    text = "📍 Душанбе, Тоҷикистон 🇹🇯",
-                    color = SoftWhite,
-                    fontSize = 15.sp
-                )
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                Text(
-                    text = "GPS",
-                    color = Gold,
-                    fontSize = 13.sp
-                )
-            }
-        }
-
-        item {
-
-            NextPrayerCard(
-                prayerName = "ШОМ",
-                prayerTime = prayerTimes.maghrib
-            )
-        }
-
-        item {
-
-            Text(
-                text = "Вақти намоз",
-                color = White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        item {
-
-            PrayerTimesCard(
-                prayerTimes = prayerTimes
-            )
-        }
-
-        item {
-
-            Text(
-                text = "Хизматҳо",
-                color = White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        item {
-
-            ServiceGrid(
-                onNamoz = onNamoz,
-                onQuran = onQuran,
-                onDuas = onDuas,
-                onQibla = onQibla
-            )
-        }
-
-        item {
-
-            ServiceButton(
-                icon = "☪",
-                title = "99 номи Аллоҳ",
-                subtitle = "Асмоул Ҳусно",
-                onClick = onNames
-            )
-        }
-
-        item {
-
-            TasbehCard()
-        }
-
-        item {
-
-            Spacer(modifier = Modifier.height(15.dp))
-
-            Text(
-                text = "Намози Ман",
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-                color = Gold,
-                fontSize = 13.sp
-            )
-
-            Text(
-                text = "JABORZODA FAYZALI",
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-                color = SoftWhite,
-                fontSize = 10.sp
-            )
+            delay(1000)
         }
     }
-}
 
-@Composable
-fun NextPrayerCard(
-    prayerName: String,
-    prayerTime: String
-) {
+    val latitude =
+        place?.latitude ?: 38.5598
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = CardGreen
-        )
-    ) {
+    val longitude =
+        place?.longitude ?: 68.7870
 
-        Column(
-            modifier = Modifier.padding(22.dp)
+    val timezone =
+        TimeZone.getDefault()
+            .getOffset(now.timeInMillis)
+            .toDouble() / 3_600_000.0
+
+    val prayerTimes =
+        remember(
+            latitude,
+            longitude,
+            now.get(Calendar.YEAR),
+            now.get(Calendar.DAY_OF_YEAR),
+            timezone
         ) {
 
-            Text(
-                text = "Намози навбатӣ",
-                color = SoftWhite,
-                fontSize = 14.sp
+            PrayerTimesCalculator.calculate(
+                latitude = latitude,
+                longitude = longitude,
+                timezone = timezone,
+                date = now
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-
-                    Text(
-                        text = prayerName,
-                        color = Gold,
-                        fontSize = 27.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        text = "Вақти намоз",
-                        color = SoftWhite,
-                        fontSize = 13.sp
-                    )
-                }
-
-                Text(
-                    text = prayerTime,
-                    color = White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
         }
-    }
-}
-
-@Composable
-fun PrayerTimesCard(
-    prayerTimes: PrayerTimes
-) {
 
     val prayers = listOf(
         "Бомдод" to prayerTimes.fajr,
@@ -402,37 +345,242 @@ fun PrayerTimesCard(
         "Хуфтан" to prayerTimes.isha
     )
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = CardGreen
+    val nextPrayer =
+        findNextPrayer(
+            prayers,
+            now
+        )
+
+    val dateText =
+        SimpleDateFormat(
+            "dd MMMM yyyy",
+            Locale("tg")
+        ).format(now.time)
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(DarkBackground)
+            .padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(
+            top = 24.dp,
+            bottom = 24.dp
         )
     ) {
 
+        item {
+
+            Text(
+                text = "Ассалому алайкум 🤍",
+                color = White,
+                fontSize = 25.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(6.dp)
+            )
+
+            Text(
+                text = dateText,
+                color = Gray,
+                fontSize = 14.sp
+            )
+
+            Spacer(
+                modifier = Modifier.height(20.dp)
+            )
+
+            LocationCard(
+                place = place,
+                loading = loading,
+                error = locationError,
+                onRefresh = onRefreshLocation
+            )
+
+            Spacer(
+                modifier = Modifier.height(16.dp)
+            )
+
+            NextPrayerCard(
+                prayer = nextPrayer.first,
+                time = nextPrayer.second,
+                now = now
+            )
+
+            Spacer(
+                modifier = Modifier.height(18.dp)
+            )
+
+            Text(
+                text = "Вақти намоз",
+                color = White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(10.dp)
+            )
+        }
+
+        items(prayers) { prayer ->
+
+            PrayerTimeCard(
+                name = prayer.first,
+                time = prayer.second
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+        }
+
+        item {
+
+            Spacer(
+                modifier = Modifier.height(18.dp)
+            )
+
+            Text(
+                text = "Хидматҳо",
+                color = White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(12.dp)
+            )
+
+            HomeActionCard(
+                icon = "🕌",
+                title = "Намоз",
+                subtitle = "Тарзи хондани намоз",
+                onClick = {
+                    onOpen(AppScreen.NAMOZ)
+                }
+            )
+
+            HomeActionCard(
+                icon = "📖",
+                title = "Қуръон",
+                subtitle = "Сураҳо ва оятҳо",
+                onClick = {
+                    onOpen(AppScreen.QURAN)
+                }
+            )
+
+            HomeActionCard(
+                icon = "🤲",
+                title = "Дуоҳо",
+                subtitle = "Дуоҳои ҳаррӯза",
+                onClick = {
+                    onOpen(AppScreen.DUAS)
+                }
+            )
+
+            HomeActionCard(
+                icon = "🧭",
+                title = "Қибла",
+                subtitle = "Самти Каъба",
+                onClick = {
+                    onOpen(AppScreen.QIBLA)
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun LocationCard(
+    place: CurrentPlace?,
+    loading: Boolean,
+    error: Boolean,
+    onRefresh: () -> Unit
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = CardColor
+        ),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(18.dp)
         ) {
 
-            prayers.forEach { prayer ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
 
-                Row(
-                    modifier = Modifier.fillMaxWidth()
+                Text(
+                    text = "📍",
+                    fontSize = 26.sp
+                )
+
+                Spacer(
+                    modifier = Modifier.width(12.dp)
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f)
                 ) {
 
                     Text(
-                        text = prayer.first,
+                        text =
+                            if (loading)
+                                "Ҷойгиршавӣ муайян шуда истодааст..."
+                            else if (place != null)
+                                "${place.city}, ${place.country}"
+                            else
+                                "Ҷойгиршавӣ муайян нашудааст",
                         color = White,
-                        fontSize = 16.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    Text(
-                        text = prayer.second,
-                        color = Gold,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold
+                    )
+
+                    if (place != null) {
+
+                        Spacer(
+                            modifier = Modifier.height(4.dp)
+                        )
+
+                        Text(
+                            text = String.format(
+                                Locale.US,
+                                "%.5f, %.5f",
+                                place.latitude,
+                                place.longitude
+                            ),
+                            color = Gray,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    if (error) {
+
+                        Spacer(
+                            modifier = Modifier.height(4.dp)
+                        )
+
+                        Text(
+                            text = "GPS-ро фаъол кунед ва иҷозати ҷойгиршавиро диҳед.",
+                            color = GoldLight,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                TextButton(
+                    onClick = onRefresh
+                ) {
+                    Text(
+                        text = "↻",
+                        color = Gold,
+                        fontSize = 28.sp
                     )
                 }
             }
@@ -441,672 +589,192 @@ fun PrayerTimesCard(
 }
 
 @Composable
-fun ServiceGrid(
-    onNamoz: () -> Unit,
-    onQuran: () -> Unit,
-    onDuas: () -> Unit,
-    onQibla: () -> Unit
+fun NextPrayerCard(
+    prayer: String,
+    time: String,
+    now: Calendar
 ) {
 
-    Column(
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth()
+    val remaining =
+        remember(
+            prayer,
+            time,
+            now.get(Calendar.MINUTE),
+            now.get(Calendar.SECOND)
         ) {
-
-            ServiceButton(
-                icon = "🕌",
-                title = "Намоз",
-                subtitle = "Тарзи хондан",
-                onClick = onNamoz,
-                modifier = Modifier.weight(1f)
-            )
-
-            ServiceButton(
-                icon = "📖",
-                title = "Қуръон",
-                subtitle = "Сураҳо",
-                onClick = onQuran,
-                modifier = Modifier.weight(1f)
-            )
+            calculateRemaining(time, now)
         }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-
-            ServiceButton(
-                icon = "🤲",
-                title = "Дуоҳо",
-                subtitle = "Зикрҳо",
-                onClick = onDuas,
-                modifier = Modifier.weight(1f)
-            )
-
-            ServiceButton(
-                icon = "🧭",
-                title = "Қибла",
-                subtitle = "Самти Каъба",
-                onClick = onQibla,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
-fun ServiceButton(
-    icon: String,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
 
     Card(
-        modifier = modifier
-            .height(105.dp)
-            .clickable {
-                onClick()
-            },
-        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = CardGreen
-        )
+            containerColor = CardColor2
+        ),
+        shape = RoundedCornerShape(24.dp)
     ) {
 
         Column(
-            modifier = Modifier.padding(15.dp),
-            verticalArrangement = Arrangement.Center
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
             Text(
-                text = icon,
-                fontSize = 27.sp
+                text = "Намози навбатӣ",
+                color = Gray,
+                fontSize = 14.sp
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
             )
 
             Text(
-                text = title,
-                color = White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-
-            Text(
-                text = subtitle,
-                color = SoftWhite,
-                fontSize = 11.sp
-            )
-        }
-    }
-}
-
-@Composable
-fun QuranScreen(
-    onOpenSurah: (QuranSurah) -> Unit
-) {
-
-    var search by remember {
-        mutableStateOf("")
-    }
-
-    val filteredSurahs = remember(search) {
-
-        if (search.isBlank()) {
-
-            QuranData.surahs
-
-        } else {
-
-            QuranData.surahs.filter {
-
-                it.tajikName.contains(
-                    search,
-                    ignoreCase = true
-                ) ||
-
-                it.arabicName.contains(search)
-            }
-        }
-    }
-
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-
-        Column(
-            modifier = Modifier.padding(
-                start = 18.dp,
-                end = 18.dp,
-                top = 18.dp
-            )
-        ) {
-
-            Text(
-                text = "📖 Қуръон",
-                color = White,
+                text = prayer,
+                color = GoldLight,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold
             )
 
             Text(
-                text = "Қуръони Карим",
-                color = SoftWhite,
+                text = time,
+                color = White,
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            Text(
+                text = "То намози навбатӣ: $remaining",
+                color = Gray,
                 fontSize = 14.sp
             )
-
-            Spacer(modifier = Modifier.height(15.dp))
-
-            OutlinedTextField(
-                value = search,
-                onValueChange = {
-                    search = it
-                },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = {
-                    Text(
-                        text = "Ҷустуҷӯи сура..."
-                    )
-                },
-                leadingIcon = {
-                    Text("🔎")
-                },
-                shape = RoundedCornerShape(18.dp)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-
-            items(filteredSurahs) { surah ->
-
-                SurahCard(
-                    surah = surah,
-                    onClick = {
-                        onOpenSurah(surah)
-                    }
-                )
-            }
         }
     }
 }
 
 @Composable
-fun SurahCard(
-    surah: QuranSurah,
+fun PrayerTimeCard(
+    name: String,
+    time: String
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = CardColor
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 18.dp,
+                    vertical = 15.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Text(
+                text = prayerIcon(name),
+                fontSize = 22.sp
+            )
+
+            Spacer(
+                modifier = Modifier.width(14.dp)
+            )
+
+            Text(
+                text = name,
+                color = White,
+                fontSize = 17.sp,
+                modifier = Modifier.weight(1f)
+            )
+
+            Text(
+                text = time,
+                color = GoldLight,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+fun prayerIcon(name: String): String {
+
+    return when (name) {
+        "Бомдод" -> "🌅"
+        "Пешин" -> "☀️"
+        "Аср" -> "🌤️"
+        "Шом" -> "🌇"
+        "Хуфтан" -> "🌙"
+        else -> "🕌"
+    }
+}
+
+@Composable
+fun HomeActionCard(
+    icon: String,
+    title: String,
+    subtitle: String,
     onClick: () -> Unit
 ) {
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(bottom = 10.dp)
             .clickable {
                 onClick()
             },
-        shape = RoundedCornerShape(19.dp),
         colors = CardDefaults.cardColors(
-            containerColor = CardGreen
-        )
+            containerColor = CardColor
+        ),
+        shape = RoundedCornerShape(18.dp)
     ) {
 
         Row(
-            modifier = Modifier.padding(15.dp),
+            modifier = Modifier.padding(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
 
             Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .background(
-                        Gold,
-                        CircleShape
-                    ),
+                    .size(50.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF193A32)),
                 contentAlignment = Alignment.Center
             ) {
 
                 Text(
-                    text = surah.number.toString(),
-                    color = DarkGreen,
-                    fontWeight = FontWeight.Bold
+                    text = icon,
+                    fontSize = 25.sp
                 )
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-
-                Text(
-                    text = surah.tajikName,
-                    color = White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    text = "${surah.revelation} • ${surah.ayahCount} оят",
-                    color = SoftWhite,
-                    fontSize = 12.sp
-                )
-            }
-
-            Text(
-                text = surah.arabicName,
-                color = Gold,
-                fontSize = 23.sp
+            Spacer(
+                modifier = Modifier.width(15.dp)
             )
-        }
-    }
-}
-
-@Composable
-fun QuranReaderScreen(
-    surah: QuranSurah,
-    onBack: () -> Unit
-) {
-
-    val ayahs = QuranData.getAyahs(surah.number)
-
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-
-            Text(
-                text = "‹",
-                color = Gold,
-                fontSize = 38.sp,
-                modifier = Modifier.clickable {
-                    onBack()
-                }
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-
-                Text(
-                    text = surah.tajikName,
-                    color = White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    text = surah.arabicName,
-                    color = Gold,
-                    fontSize = 20.sp
-                )
-            }
-
-            Text(
-                text = "${surah.number}",
-                color = Gold,
-                fontSize = 18.sp
-            )
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-
-            item {
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = CardGreen
-                    )
-                ) {
-
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-
-                        Text(
-                            text = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
-                            color = Gold,
-                            fontSize = 24.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-
-            if (ayahs.isEmpty()) {
-
-                item {
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = CardGreen
-                        )
-                    ) {
-
-                        Column(
-                            modifier = Modifier.padding(20.dp)
-                        ) {
-
-                            Text(
-                                text = "Матни сура",
-                                color = Gold,
-                                fontSize = 19.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Spacer(
-                                modifier = Modifier.height(8.dp)
-                            )
-
-                            Text(
-                                text = "Матни ин сура дар бастаи офлайнии ҳозира ҳанӯз ворид нашудааст.",
-                                color = SoftWhite,
-                                fontSize = 14.sp
-                            )
-
-                            Spacer(
-                                modifier = Modifier.height(8.dp)
-                            )
-
-                            Text(
-                                text = "Рӯйхати ҳамаи 114 сура дастрас аст.",
-                                color = White,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-
-            } else {
-
-                items(ayahs) { ayah ->
-
-                    AyahCard(ayah)
-                }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(20.dp))
-            }
-        }
-    }
-}
-
-@Composable
-fun AyahCard(
-    ayah: QuranAyah
-) {
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = CardGreen
-        )
-    ) {
-
-        Column(
-            modifier = Modifier.padding(18.dp)
-        ) {
-
-            Text(
-                text = ayah.arabic,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.End,
-                color = White,
-                fontSize = 24.sp,
-                lineHeight = 38.sp
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                verticalAlignment = Alignment.Top
-            ) {
-
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .background(
-                            Gold,
-                            CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-
-                    Text(
-                        text = ayah.number.toString(),
-                        color = DarkGreen,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Text(
-                    text = ayah.tajik,
-                    color = SoftWhite,
-                    fontSize = 15.sp,
-                    lineHeight = 23.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun DuasScreen() {
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-
-        item {
-
-            ScreenTitle(
-                title = "🤲 Дуоҳо",
-                subtitle = "Дуоҳои муҳим барои ҳар рӯз"
-            )
-        }
-
-        items(IslamicData.duas) { dua ->
-
-            DuaCard(dua)
-        }
-    }
-}
-
-@Composable
-fun DuaCard(
-    dua: DuaItem
-) {
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = CardGreen
-        )
-    ) {
-
-        Column(
-            modifier = Modifier.padding(18.dp)
-        ) {
-
-            Text(
-                text = dua.title,
-                color = Gold,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = dua.arabic,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.End,
-                color = White,
-                fontSize = 22.sp
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = dua.tajik,
-                color = SoftWhite,
-                fontSize = 15.sp
-            )
-        }
-    }
-}
-
-@Composable
-fun NamesOfAllahScreen(
-    onBack: () -> Unit
-) {
-
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-
-            Text(
-                text = "‹",
-                color = Gold,
-                fontSize = 38.sp,
-                modifier = Modifier.clickable {
-                    onBack()
-                }
-            )
-
-            Spacer(modifier = Modifier.width(10.dp))
 
             Column {
 
                 Text(
-                    text = "99 номи Аллоҳ",
+                    text = title,
                     color = White,
-                    fontSize = 24.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
-                    text = "Асмоул Ҳусно",
-                    color = SoftWhite,
-                    fontSize = 13.sp
-                )
-            }
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-
-            items(IslamicData.namesOfAllah) { name ->
-
-                AllahNameCard(name)
-            }
-        }
-    }
-}
-
-@Composable
-fun AllahNameCard(
-    name: AllahName
-) {
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = CardGreen
-        )
-    ) {
-
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(
-                        Gold,
-                        CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-
-                Text(
-                    text = name.number.toString(),
-                    color = DarkGreen,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-
-                Text(
-                    text = name.arabic,
-                    color = White,
-                    fontSize = 22.sp
-                )
-
-                Text(
-                    text = name.transliteration,
-                    color = Gold,
-                    fontSize = 13.sp
-                )
-
-                Text(
-                    text = name.tajik,
-                    color = SoftWhite,
+                    text = subtitle,
+                    color = Gray,
                     fontSize = 13.sp
                 )
             }
@@ -1120,213 +788,362 @@ fun NamozScreen() {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .background(DarkBackground)
+            .padding(16.dp),
+        contentPadding = PaddingValues(
+            top = 20.dp,
+            bottom = 30.dp
+        )
     ) {
 
         item {
 
-            ScreenTitle(
-                title = "🕌 Намоз",
-                subtitle = "Намозҳои панҷвақта"
+            Text(
+                text = "🕌 Намоз",
+                color = White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            Text(
+                text = "Намозҳои панҷвақта",
+                color = Gray,
+                fontSize = 14.sp
+            )
+
+            Spacer(
+                modifier = Modifier.height(18.dp)
             )
         }
 
         items(NamozData.prayers) { prayer ->
 
-            PrayerInfoCard(prayer)
-        }
-    }
-}
-
-@Composable
-fun PrayerInfoCard(
-    prayer: NamozInfo
-) {
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = CardGreen
-        )
-    ) {
-
-        Column(
-            modifier = Modifier.padding(18.dp)
-        ) {
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = CardColor
+                ),
+                shape = RoundedCornerShape(18.dp)
             ) {
 
                 Column(
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.padding(18.dp)
                 ) {
 
-                    Text(
-                        text = prayer.name,
-                        color = Gold,
-                        fontSize = 21.sp,
-                        fontWeight = FontWeight.Bold
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+
+                            Text(
+                                text = prayer.name,
+                                color = GoldLight,
+                                fontSize = 21.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Text(
+                                text = prayer.arabicName,
+                                color = Gray,
+                                fontSize = 18.sp
+                            )
+                        }
+
+                        Text(
+                            text = prayer.rakats,
+                            color = White,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.End
+                        )
+                    }
+
+                    Spacer(
+                        modifier = Modifier.height(12.dp)
                     )
 
                     Text(
-                        text = prayer.arabicName,
-                        color = White,
-                        fontSize = 19.sp
+                        text = prayer.description,
+                        color = Gray,
+                        fontSize = 14.sp
                     )
                 }
-
-                Text(
-                    text = prayer.rakats,
-                    color = Gold,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.End
-                )
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = prayer.description,
-                color = SoftWhite,
-                fontSize = 14.sp
-            )
         }
     }
 }
 
 @Composable
-fun QiblaScreen() {
+fun QuranScreen() {
+
+    var search by remember {
+        mutableStateOf("")
+    }
+
+    var selectedSurah by remember {
+        mutableStateOf<QuranSurah?>(null)
+    }
+
+    if (selectedSurah != null) {
+
+        QuranReaderScreen(
+            surah = selectedSurah!!,
+            onBack = {
+                selectedSurah = null
+            }
+        )
+
+        return
+    }
+
+    val filtered =
+        QuranData.surahs.filter {
+
+            it.arabicName.contains(search) ||
+                    it.tajikName.contains(search) ||
+                    it.number.toString() == search
+        }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(18.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(DarkBackground)
+            .padding(16.dp)
     ) {
 
-        ScreenTitle(
-            title = "🧭 Қибла",
-            subtitle = "Самти Каъба"
+        Text(
+            text = "📖 Қуръон",
+            color = White,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold
         )
 
-        Spacer(modifier = Modifier.height(35.dp))
+        Spacer(
+            modifier = Modifier.height(14.dp)
+        )
 
-        Box(
+        OutlinedTextField(
+            value = search,
+            onValueChange = {
+                search = it
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = {
+                Text("Ҷустуҷӯи сура...")
+            },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Gold,
+                unfocusedBorderColor = Green,
+                focusedTextColor = White,
+                unfocusedTextColor = White
+            )
+        )
+
+        Spacer(
+            modifier = Modifier.height(12.dp)
+        )
+
+        LazyColumn {
+
+            items(filtered) { surah ->
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .clickable {
+                            selectedSurah = surah
+                        },
+                    colors = CardDefaults.cardColors(
+                        containerColor = CardColor
+                    ),
+                    shape = RoundedCornerShape(15.dp)
+                ) {
+
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF193A32)),
+                            contentAlignment = Alignment.Center
+                        ) {
+
+                            Text(
+                                text = surah.number.toString(),
+                                color = GoldLight,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(
+                            modifier = Modifier.width(14.dp)
+                        )
+
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+
+                            Text(
+                                text = surah.tajikName,
+                                color = White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Text(
+                                text = surah.arabicName,
+                                color = GoldLight,
+                                fontSize = 18.sp
+                            )
+                        }
+
+                        Text(
+                            text = "${surah.ayahCount} оят",
+                            color = Gray,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun QuranReaderScreen(
+    surah: QuranSurah,
+    onBack: () -> Unit
+) {
+
+    val ayahs =
+        QuranData.getAyahs(surah.number)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(DarkBackground)
+    ) {
+
+        Row(
             modifier = Modifier
-                .size(250.dp)
-                .background(
-                    CardGreen,
-                    CircleShape
-                ),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
+            TextButton(
+                onClick = onBack
             ) {
 
                 Text(
-                    text = "🕋",
-                    fontSize = 65.sp
+                    text = "← Бозгашт",
+                    color = Gold
                 )
+            }
 
-                Spacer(modifier = Modifier.height(8.dp))
+            Spacer(
+                modifier = Modifier.width(8.dp)
+            )
+
+            Column {
 
                 Text(
-                    text = "Қибла",
-                    color = Gold,
-                    fontSize = 22.sp,
+                    text = surah.tajikName,
+                    color = White,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
-                    text = "Самти Каъба",
-                    color = SoftWhite,
-                    fontSize = 12.sp
+                    text = surah.arabicName,
+                    color = Gray
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(25.dp))
+        if (ayahs.isEmpty()) {
 
-        Text(
-            text = "Телефонро ҳамвор нигоҳ доред.",
-            color = White,
-            fontSize = 16.sp
-        )
-    }
-}
-
-@Composable
-fun TasbehCard() {
-
-    var count by remember {
-        mutableStateOf(0)
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = CardGreen
-        )
-    ) {
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-
-            Text(
-                text = "📿 Тасбеҳ",
-                color = White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = count.toString(),
-                color = Gold,
-                fontSize = 42.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
 
-                Button(
-                    onClick = {
-                        count++
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Gold,
-                        contentColor = DarkGreen
-                    )
-                ) {
+                Text(
+                    text = "Матни пурраи ин сура ҳоло илова нашудааст.",
+                    color = Gray,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(30.dp)
+                )
+            }
 
-                    Text("Зикр +1")
-                }
+        } else {
 
-                OutlinedButton(
-                    onClick = {
-                        count = 0
+            LazyColumn(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(
+                    bottom = 30.dp
+                )
+            ) {
+
+                items(ayahs) { ayah ->
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = CardColor
+                        ),
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+
+                        Column(
+                            modifier = Modifier.padding(18.dp)
+                        ) {
+
+                            Text(
+                                text = "${ayah.number}",
+                                color = Gold,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(10.dp)
+                            )
+
+                            Text(
+                                text = ayah.arabic,
+                                color = White,
+                                fontSize = 24.sp,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(12.dp)
+                            )
+
+                            Text(
+                                text = ayah.tajik,
+                                color = Gray,
+                                fontSize = 15.sp
+                            )
+                        }
                     }
-                ) {
-
-                    Text(
-                        text = "Аз нав",
-                        color = White
-                    )
                 }
             }
         }
@@ -1334,38 +1151,397 @@ fun TasbehCard() {
 }
 
 @Composable
-fun ScreenTitle(
-    title: String,
-    subtitle: String
+fun DuasScreen() {
+
+    var showNames by remember {
+        mutableStateOf(false)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(DarkBackground)
+    ) {
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 16.dp,
+                    vertical = 20.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Text(
+                text = "🤲 Дуоҳо",
+                color = White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+
+            TextButton(
+                onClick = {
+                    showNames = !showNames
+                }
+            ) {
+
+                Text(
+                    text =
+                        if (showNames)
+                            "Дуоҳо"
+                        else
+                            "99 ном",
+                    color = Gold
+                )
+            }
+        }
+
+        if (showNames) {
+
+            LazyColumn(
+                modifier = Modifier.padding(
+                    horizontal = 16.dp
+                )
+            ) {
+
+                items(
+                    IslamicData.allahNames
+                ) { name ->
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = CardColor
+                        ),
+                        shape = RoundedCornerShape(15.dp)
+                    ) {
+
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+
+                            Text(
+                                text = name.number.toString(),
+                                color = Gold,
+                                modifier = Modifier.width(35.dp)
+                            )
+
+                            Column {
+
+                                Text(
+                                    text = name.arabic,
+                                    color = GoldLight,
+                                    fontSize = 20.sp
+                                )
+
+                                Text(
+                                    text = name.tajik,
+                                    color = White,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+        } else {
+
+            LazyColumn(
+                modifier = Modifier.padding(
+                    horizontal = 16.dp
+                )
+            ) {
+
+                items(
+                    IslamicData.duas
+                ) { dua ->
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = CardColor
+                        ),
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+
+                        Column(
+                            modifier = Modifier.padding(18.dp)
+                        ) {
+
+                            Text(
+                                text = dua.title,
+                                color = GoldLight,
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(12.dp)
+                            )
+
+                            Text(
+                                text = dua.arabic,
+                                color = White,
+                                fontSize = 21.sp,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(10.dp)
+                            )
+
+                            Text(
+                                text = dua.tajik,
+                                color = Gray,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun QiblaScreen(
+    place: CurrentPlace?,
+    onRefreshLocation: () -> Unit
 ) {
 
-    Column {
+    val context = LocalContext.current
+
+    var heading by remember {
+        mutableStateOf(0f)
+    }
+
+    val compass = remember {
+        QiblaCompass(
+            context = context
+        ) {
+            heading = it
+        }
+    }
+
+    DisposableEffect(compass) {
+
+        compass.start()
+
+        onDispose {
+            compass.stop()
+        }
+    }
+
+    val latitude =
+        place?.latitude ?: 38.5598
+
+    val longitude =
+        place?.longitude ?: 68.7870
+
+    val qibla =
+        QiblaHelper.calculateQiblaBearing(
+            latitude,
+            longitude
+        )
+
+    val direction =
+        QiblaHelper.directionName(qibla)
+
+    val difference =
+        ((qibla - heading + 540f) % 360f) - 180f
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(DarkBackground)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+
+        Spacer(
+            modifier = Modifier.height(20.dp)
+        )
 
         Text(
-            text = title,
+            text = "🧭 Қибла",
             color = White,
-            fontSize = 27.sp,
+            fontSize = 29.sp,
             fontWeight = FontWeight.Bold
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(
+            modifier = Modifier.height(8.dp)
+        )
 
         Text(
-            text = subtitle,
-            color = SoftWhite,
+            text = place?.let {
+                "${it.city}, ${it.country}"
+            } ?: "Ҷойгиршавӣ муайян нашудааст",
+            color = Gray,
             fontSize = 14.sp
         )
+
+        Spacer(
+            modifier = Modifier.height(25.dp)
+        )
+
+        Box(
+            modifier = Modifier
+                .size(270.dp)
+                .clip(CircleShape)
+                .background(CardColor),
+            contentAlignment = Alignment.Center
+        ) {
+
+            Text(
+                text = "N",
+                color = GoldLight,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 15.dp)
+            )
+
+            Text(
+                text = "S",
+                color = Gray,
+                fontSize = 20.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 15.dp)
+            )
+
+            Text(
+                text = "W",
+                color = Gray,
+                fontSize = 20.sp,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 15.dp)
+            )
+
+            Text(
+                text = "E",
+                color = Gray,
+                fontSize = 20.sp,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 15.dp)
+            )
+
+            Text(
+                text = "🕋",
+                fontSize = 50.sp,
+                modifier = Modifier.offset(
+                    x = 0.dp,
+                    y = 0.dp
+                )
+            )
+        }
+
+        Spacer(
+            modifier = Modifier.height(25.dp)
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = CardColor
+            ),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+
+                Text(
+                    text = "Самти Қибла",
+                    color = Gray
+                )
+
+                Text(
+                    text = "${qibla.toInt()}°",
+                    color = GoldLight,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = direction,
+                    color = White,
+                    fontSize = 17.sp
+                )
+
+                Spacer(
+                    modifier = Modifier.height(10.dp)
+                )
+
+                Text(
+                    text = "Телефонро оҳиста гардонед.",
+                    color = Gray,
+                    fontSize = 13.sp
+                )
+
+                Text(
+                    text = "Самти телефон: ${heading.toInt()}°",
+                    color = Gray,
+                    fontSize = 13.sp
+                )
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                Text(
+                    text = "Фарқ аз Қибла: ${kotlin.math.abs(difference).toInt()}°",
+                    color = Gold,
+                    fontSize = 14.sp
+                )
+            }
+        }
+
+        Spacer(
+            modifier = Modifier.height(18.dp)
+        )
+
+        Button(
+            onClick = onRefreshLocation,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Green
+            ),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+
+            Text(
+                text = "📍 Навсозии ҷойгиршавӣ",
+                color = White
+            )
+        }
     }
 }
 
 @Composable
 fun BottomNavigationBar(
     selectedScreen: AppScreen,
-    onSelect: (AppScreen) -> Unit
+    onSelected: (AppScreen) -> Unit
 ) {
 
     NavigationBar(
-        containerColor = Color(0xFF061512)
+        containerColor = Color(0xFF081C18)
     ) {
 
         val screens = listOf(
@@ -1381,7 +1557,7 @@ fun BottomNavigationBar(
             NavigationBarItem(
                 selected = selectedScreen == screen,
                 onClick = {
-                    onSelect(screen)
+                    onSelected(screen)
                 },
                 icon = {
                     Text(
@@ -1398,11 +1574,116 @@ fun BottomNavigationBar(
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = Gold,
                     selectedTextColor = Gold,
-                    unselectedIconColor = SoftWhite,
-                    unselectedTextColor = SoftWhite,
-                    indicatorColor = CardGreen
+                    unselectedIconColor = Gray,
+                    unselectedTextColor = Gray,
+                    indicatorColor = Color(0xFF193A32)
                 )
             )
         }
     }
+}
+
+fun findNextPrayer(
+    prayers: List<Pair<String, String>>,
+    now: Calendar
+): Pair<String, String> {
+
+    val currentMinutes =
+        now.get(Calendar.HOUR_OF_DAY) * 60 +
+                now.get(Calendar.MINUTE)
+
+    for (prayer in prayers) {
+
+        val parts =
+            prayer.second.split(":")
+
+        if (parts.size == 2) {
+
+            val hour =
+                parts[0].toIntOrNull() ?: continue
+
+            val minute =
+                parts[1].toIntOrNull() ?: continue
+
+            val prayerMinutes =
+                hour * 60 + minute
+
+            if (prayerMinutes > currentMinutes) {
+                return prayer
+            }
+        }
+    }
+
+    return prayers.first()
+}
+
+fun calculateRemaining(
+    time: String,
+    now: Calendar
+): String {
+
+    val parts =
+        time.split(":")
+
+    if (parts.size != 2) {
+        return "--:--:--"
+    }
+
+    val hour =
+        parts[0].toIntOrNull() ?: return "--:--:--"
+
+    val minute =
+        parts[1].toIntOrNull() ?: return "--:--:--"
+
+    val target =
+        Calendar.getInstance()
+
+    target.timeInMillis = now.timeInMillis
+
+    target.set(
+        Calendar.HOUR_OF_DAY,
+        hour
+    )
+
+    target.set(
+        Calendar.MINUTE,
+        minute
+    )
+
+    target.set(
+        Calendar.SECOND,
+        0
+    )
+
+    target.set(
+        Calendar.MILLISECOND,
+        0
+    )
+
+    if (target.timeInMillis <= now.timeInMillis) {
+
+        target.add(
+            Calendar.DAY_OF_YEAR,
+            1
+        )
+    }
+
+    var seconds =
+        (target.timeInMillis - now.timeInMillis) / 1000
+
+    val hours =
+        seconds / 3600
+
+    seconds %= 3600
+
+    val minutes =
+        seconds / 60
+
+    seconds %= 60
+
+    return "%02d:%02d:%02d".format(
+        hours,
+        minutes,
+        seconds
+    )
 }
