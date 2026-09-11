@@ -180,4 +180,13 @@ object IslamicData {
         AllahName(90, "الْمَانِعُ", "Al-Mani", "Боздоранда"),
 
         AllahName(91, "الضَّارَّ", "Ad-Darr", "Қудрати расонидани зарар"),
-        AllahName(92, "الن
+        AllahName(92, "النَّافِعُ", "An-Nafi", "Фоидарасон"),
+        AllahName(93, "النُّورُ", "An-Nur", "Нур"),
+        AllahName(94, "الْهَادِي", "Al-Hadi", "Ҳидояткунанда"),
+        AllahName(95, "الْبَدِيعُ", "Al-Badi", "Офаринандаи беҳамто"),
+        AllahName(96, "الْبَاقِي", "Al-Baqi", "Ҷовид"),
+        AllahName(97, "الْوَارِثُ", "Al-Warith", "Меросбаранда"),
+        AllahName(98, "الرَّشِيدُ", "Ar-Rashid", "Роҳнамои дуруст"),
+        AllahName(99, "الصَّبُورُ", "As-Sabur", "Босабр")    
+    )
+}
