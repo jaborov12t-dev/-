@@ -21,22 +21,30 @@ import androidx.core.content.ContextCompat
 import java.util.Calendar
 import java.util.TimeZone
 
+data class AppLocation(
+    val city: String,
+    val country: String,
+    val latitude: Double,
+    val longitude: Double
+)
+
 class MainActivity : ComponentActivity() {
+
+    private lateinit var locationHelper: LocationHelper
 
     private val locationPermission =
         registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
-        ) { granted ->
+        ) { result ->
 
-            if (
-                granted[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                granted[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-            ) {
+            val granted =
+                result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+            if (granted) {
                 loadLocation()
             }
         }
-
-    private var locationHelper: LocationHelper? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,7 +55,9 @@ class MainActivity : ComponentActivity() {
             NamozimanApp()
         }
 
-        if (!hasLocationPermission()) {
+        if (hasLocationPermission()) {
+            loadLocation()
+        } else {
             locationPermission.launch(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -62,33 +72,49 @@ class MainActivity : ComponentActivity() {
             this,
             Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                ) == PackageManager.PERMISSION_GRANTED
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun loadLocation() {
-        locationHelper?.getLocation { location ->
 
-            if (location != null) {
+        locationHelper.getLocation { location ->
 
-                val timezone =
-                    TimeZone.getDefault().rawOffset / 3600000.0
-
-                val times = PrayerTimesCalculator.calculate(
-                    latitude = location.latitude,
-                    longitude = location.longitude,
-                    timezone = timezone,
-                    date = Calendar.getInstance()
-                )
-
-                prayerTimes = times
+            if (location == null) {
+                return@getLocation
             }
+
+            val timezone =
+                TimeZone.getDefault().rawOffset / 3600000.0
+
+            val times = PrayerTimesCalculator.calculate(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                timezone = timezone,
+                date = Calendar.getInstance()
+            )
+
+            val city = CityHelper.getCity(
+                this,
+                location.latitude,
+                location.longitude
+            )
+
+            appLocation = AppLocation(
+                city = city.city,
+                country = city.country,
+                latitude = location.latitude,
+                longitude = location.longitude
+            )
+
+            prayerTimes = times
         }
     }
 
     companion object {
+
         var prayerTimes by mutableStateOf(
             PrayerTimes(
                 fajr = "--:--",
@@ -96,6 +122,15 @@ class MainActivity : ComponentActivity() {
                 asr = "--:--",
                 maghrib = "--:--",
                 isha = "--:--"
+            )
+        )
+
+        var appLocation by mutableStateOf(
+            AppLocation(
+                city = "Муайян карда мешавад",
+                country = "",
+                latitude = 0.0,
+                longitude = 0.0
             )
         )
     }
@@ -107,26 +142,29 @@ fun NamozimanApp() {
     val dark = Color(0xFF071C18)
     val green = Color(0xFF0B3D32)
     val gold = Color(0xFFD4AF37)
+    val white = Color.White
+    val gray = Color(0xFFB8C5C1)
 
     val times = MainActivity.prayerTimes
+    val location = MainActivity.appLocation
 
     MaterialTheme {
 
         Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(dark),
+            modifier = Modifier.fillMaxSize(),
             color = dark
         ) {
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp),
+                    .padding(horizontal = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
-                Spacer(modifier = Modifier.height(30.dp))
+                Spacer(
+                    modifier = Modifier.height(30.dp)
+                )
 
                 Text(
                     text = "Намози Ман 🕌",
@@ -135,92 +173,189 @@ fun NamozimanApp() {
                     fontWeight = FontWeight.Bold
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
 
                 Text(
                     text = "Ассалому алайкум 🤍",
-                    color = Color.White,
-                    fontSize = 20.sp
+                    color = white,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Medium
                 )
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(
+                    modifier = Modifier.height(6.dp)
+                )
 
                 Text(
-                    text = "Макон муайян карда мешавад 📍",
-                    color = Color.LightGray,
-                    fontSize = 16.sp
+                    text =
+                        if (location.country.isNotEmpty())
+                            "${location.city}, ${location.country} 📍"
+                        else
+                            "${location.city} 📍",
+                    color = gray,
+                    fontSize = 15.sp
                 )
 
-                Spacer(modifier = Modifier.height(25.dp))
+                Spacer(
+                    modifier = Modifier.height(25.dp)
+                )
 
-                Card(
+                NextPrayerCard(
+                    times = times,
+                    green = green,
+                    gold = gold
+                )
+
+                Spacer(
+                    modifier = Modifier.height(20.dp)
+                )
+
+                PrayerTime(
+                    name = "Бомдод",
+                    time = times.fajr,
+                    gold = gold
+                )
+
+                PrayerTime(
+                    name = "Пешин",
+                    time = times.dhuhr,
+                    gold = gold
+                )
+
+                PrayerTime(
+                    name = "Аср",
+                    time = times.asr,
+                    gold = gold
+                )
+
+                PrayerTime(
+                    name = "Шом",
+                    time = times.maghrib,
+                    gold = gold
+                )
+
+                PrayerTime(
+                    name = "Хуфтан",
+                    time = times.isha,
+                    gold = gold
+                )
+
+                Spacer(
+                    modifier = Modifier.height(20.dp)
+                )
+
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = green
+                    horizontalArrangement =
+                        Arrangement.spacedBy(12.dp)
+                ) {
+
+                    FeatureButton(
+                        icon = "🕌",
+                        title = "Намоз",
+                        modifier = Modifier.weight(1f)
                     )
-                ) {
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(22.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-
-                        Text(
-                            text = "Вақти намоз",
-                            color = Color.LightGray,
-                            fontSize = 16.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Имрӯз",
-                            color = gold,
-                            fontSize = 30.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Вақтҳо аз рӯи ҷойгиршавии шумо ҳисоб мешаванд",
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                    }
+                    FeatureButton(
+                        icon = "📖",
+                        title = "Қуръон",
+                        modifier = Modifier.weight(1f)
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
-
-                PrayerTime("Бомдод", times.fajr)
-                PrayerTime("Пешин", times.dhuhr)
-                PrayerTime("Аср", times.asr)
-                PrayerTime("Шом", times.maghrib)
-                PrayerTime("Хуфтан", times.isha)
-
-                Spacer(modifier = Modifier.height(25.dp))
+                Spacer(
+                    modifier = Modifier.height(12.dp)
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    horizontalArrangement =
+                        Arrangement.spacedBy(12.dp)
                 ) {
-                    FeatureButton("🕌", "Намоз")
-                    FeatureButton("📖", "Қуръон")
+
+                    FeatureButton(
+                        icon = "🤲",
+                        title = "Дуоҳо",
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    FeatureButton(
+                        icon = "🧭",
+                        title = "Қибла",
+                        modifier = Modifier.weight(1f)
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    FeatureButton("🤲", "Дуоҳо")
-                    FeatureButton("🧭", "Қибла")
-                }
+                Spacer(
+                    modifier = Modifier.height(20.dp)
+                )
             }
+        }
+    }
+}
+
+@Composable
+fun NextPrayerCard(
+    times: PrayerTimes,
+    green: Color,
+    gold: Color
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = green
+        )
+    ) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(22.dp),
+            horizontalAlignment =
+                Alignment.CenterHorizontally
+        ) {
+
+            Text(
+                text = "Намози навбатӣ",
+                color = Color.LightGray,
+                fontSize = 15.sp
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            Text(
+                text = "Имрӯз",
+                color = gold,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(
+                modifier = Modifier.height(5.dp)
+            )
+
+            Text(
+                text = "Вақти намоз",
+                color = Color.White,
+                fontSize = 27.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            Text(
+                text = "Вақтҳо мувофиқи ҷойгиршавии шумо ҳисоб мешаванд",
+                color = Color.White,
+                fontSize = 13.sp
+            )
         }
     }
 }
@@ -228,13 +363,18 @@ fun NamozimanApp() {
 @Composable
 fun PrayerTime(
     name: String,
-    time: String
+    time: String,
+    gold: Color
 ) {
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement =
+            Arrangement.SpaceBetween,
+        verticalAlignment =
+            Alignment.CenterVertically
     ) {
 
         Text(
@@ -245,7 +385,7 @@ fun PrayerTime(
 
         Text(
             text = time,
-            color = Color(0xFFD4AF37),
+            color = gold,
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold
         )
@@ -254,19 +394,3 @@ fun PrayerTime(
 
 @Composable
 fun FeatureButton(
-    icon: String,
-    title: String
-) {
-    Button(
-        onClick = {},
-        modifier = Modifier
-            .width(145.dp)
-            .height(55.dp),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Text(
-            text = "$icon $title",
-            fontSize = 15.sp
-        )
-    }
-}
