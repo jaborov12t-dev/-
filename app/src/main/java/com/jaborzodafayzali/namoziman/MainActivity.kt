@@ -1,7 +1,6 @@
 package com.jaborzodafayzali.namoziman
 
 import android.Manifest
-import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +10,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -22,9 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import java.util.Calendar
-import kotlin.math.max
 
 private val DarkGreen = Color(0xFF071C18)
 private val CardGreen = Color(0xFF102923)
@@ -39,15 +38,7 @@ class MainActivity : ComponentActivity() {
     private val locationPermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
-        ) { permissions ->
-
-            val granted =
-                permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-
-            if (granted) {
-                loadLocation()
-            }
+        ) {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,48 +47,21 @@ class MainActivity : ComponentActivity() {
         locationHelper = LocationHelper(this)
 
         setContent {
+
             NamozimanApp(
                 requestLocation = {
-                    requestLocationPermission()
+
+                    if (!locationHelper.hasPermission()) {
+
+                        locationPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    }
                 }
             )
-        }
-
-        if (locationHelper.hasPermission()) {
-            loadLocation()
-        }
-    }
-
-    private fun requestLocationPermission() {
-
-        if (!locationHelper.hasPermission()) {
-
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
-        } else {
-            loadLocation()
-        }
-    }
-
-    private fun loadLocation() {
-
-        locationHelper.getLocation { location ->
-
-            if (location != null) {
-
-                val city = CityHelper.getCity(
-                    this,
-                    location.latitude,
-                    location.longitude
-                )
-
-                // Ҷойгиршавӣ баъдтар ба ҳолати асосии барнома
-                // пайваст карда мешавад.
-            }
         }
     }
 }
@@ -113,6 +77,10 @@ fun NamozimanApp(
 
     var showNames by remember {
         mutableStateOf(false)
+    }
+
+    var selectedSurah by remember {
+        mutableStateOf<QuranSurah?>(null)
     }
 
     MaterialTheme(
@@ -137,11 +105,22 @@ fun NamozimanApp(
                 ) {
 
                     when {
+
                         showNames -> {
 
                             NamesOfAllahScreen(
                                 onBack = {
                                     showNames = false
+                                }
+                            )
+                        }
+
+                        selectedSurah != null -> {
+
+                            QuranReaderScreen(
+                                surah = selectedSurah!!,
+                                onBack = {
+                                    selectedSurah = null
                                 }
                             )
                         }
@@ -169,28 +148,29 @@ fun NamozimanApp(
                         }
 
                         selectedScreen == AppScreen.NAMOZ -> {
-
                             NamozScreen()
                         }
 
                         selectedScreen == AppScreen.QURAN -> {
 
-                            QuranScreen()
+                            QuranScreen(
+                                onOpenSurah = {
+                                    selectedSurah = it
+                                }
+                            )
                         }
 
                         selectedScreen == AppScreen.DUAS -> {
-
                             DuasScreen()
                         }
 
                         selectedScreen == AppScreen.QIBLA -> {
-
                             QiblaScreen()
                         }
                     }
                 }
 
-                if (!showNames) {
+                if (!showNames && selectedSurah == null) {
 
                     BottomNavigationBar(
                         selectedScreen = selectedScreen,
@@ -214,15 +194,13 @@ fun HomeScreen(
     onLocation: () -> Unit
 ) {
 
-    val calendar = Calendar.getInstance()
-
     val prayerTimes = remember {
 
         PrayerTimesCalculator.calculate(
             latitude = 38.5598,
             longitude = 68.7870,
             timezone = 5.0,
-            date = calendar
+            date = Calendar.getInstance()
         )
     }
 
@@ -262,7 +240,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.weight(1f))
 
                 Text(
-                    text = "Тағйир",
+                    text = "GPS",
                     color = Gold,
                     fontSize = 13.sp
                 )
@@ -331,7 +309,7 @@ fun HomeScreen(
 
         item {
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(15.dp))
 
             Text(
                 text = "Намози Ман",
@@ -367,9 +345,7 @@ fun NextPrayerCard(
     ) {
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(22.dp)
+            modifier = Modifier.padding(22.dp)
         ) {
 
             Text(
@@ -396,7 +372,7 @@ fun NextPrayerCard(
                     )
 
                     Text(
-                        text = "То намози навбатӣ",
+                        text = "Вақти намоз",
                         color = SoftWhite,
                         fontSize = 13.sp
                     )
@@ -442,8 +418,7 @@ fun PrayerTimesCard(
             prayers.forEach { prayer ->
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth()
                 ) {
 
                     Text(
@@ -478,8 +453,8 @@ fun ServiceGrid(
     ) {
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
 
             ServiceButton(
@@ -500,8 +475,8 @@ fun ServiceGrid(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
 
             ServiceButton(
@@ -545,9 +520,7 @@ fun ServiceButton(
     ) {
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(15.dp),
+            modifier = Modifier.padding(15.dp),
             verticalArrangement = Arrangement.Center
         ) {
 
@@ -555,8 +528,6 @@ fun ServiceButton(
                 text = icon,
                 fontSize = 27.sp
             )
-
-            Spacer(modifier = Modifier.height(3.dp))
 
             Text(
                 text = title,
@@ -575,71 +546,377 @@ fun ServiceButton(
 }
 
 @Composable
-fun TasbehCard() {
+fun QuranScreen(
+    onOpenSurah: (QuranSurah) -> Unit
+) {
 
-    var count by remember {
-        mutableStateOf(0)
+    var search by remember {
+        mutableStateOf("")
     }
+
+    val filteredSurahs = remember(search) {
+
+        if (search.isBlank()) {
+
+            QuranData.surahs
+
+        } else {
+
+            QuranData.surahs.filter {
+
+                it.tajikName.contains(
+                    search,
+                    ignoreCase = true
+                ) ||
+
+                it.arabicName.contains(search)
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ) {
+
+        Column(
+            modifier = Modifier.padding(
+                start = 18.dp,
+                end = 18.dp,
+                top = 18.dp
+            )
+        ) {
+
+            Text(
+                text = "📖 Қуръон",
+                color = White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Қуръони Карим",
+                color = SoftWhite,
+                fontSize = 14.sp
+            )
+
+            Spacer(modifier = Modifier.height(15.dp))
+
+            OutlinedTextField(
+                value = search,
+                onValueChange = {
+                    search = it
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = {
+                    Text(
+                        text = "Ҷустуҷӯи сура..."
+                    )
+                },
+                leadingIcon = {
+                    Text("🔎")
+                },
+                shape = RoundedCornerShape(18.dp)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+
+            items(filteredSurahs) { surah ->
+
+                SurahCard(
+                    surah = surah,
+                    onClick = {
+                        onOpenSurah(surah)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SurahCard(
+    surah: QuranSurah,
+    onClick: () -> Unit
+) {
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                onClick()
+            },
+        shape = RoundedCornerShape(19.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = CardGreen
+        )
+    ) {
+
+        Row(
+            modifier = Modifier.padding(15.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(
+                        Gold,
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+
+                Text(
+                    text = surah.number.toString(),
+                    color = DarkGreen,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+
+                Text(
+                    text = surah.tajikName,
+                    color = White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = "${surah.revelation} • ${surah.ayahCount} оят",
+                    color = SoftWhite,
+                    fontSize = 12.sp
+                )
+            }
+
+            Text(
+                text = surah.arabicName,
+                color = Gold,
+                fontSize = 23.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun QuranReaderScreen(
+    surah: QuranSurah,
+    onBack: () -> Unit
+) {
+
+    val ayahs = QuranData.getAyahs(surah.number)
+
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ) {
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Text(
+                text = "‹",
+                color = Gold,
+                fontSize = 38.sp,
+                modifier = Modifier.clickable {
+                    onBack()
+                }
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+
+                Text(
+                    text = surah.tajikName,
+                    color = White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = surah.arabicName,
+                    color = Gold,
+                    fontSize = 20.sp
+                )
+            }
+
+            Text(
+                text = "${surah.number}",
+                color = Gold,
+                fontSize = 18.sp
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+
+            item {
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = CardGreen
+                    )
+                ) {
+
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+
+                        Text(
+                            text = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+                            color = Gold,
+                            fontSize = 24.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            if (ayahs.isEmpty()) {
+
+                item {
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = CardGreen
+                        )
+                    ) {
+
+                        Column(
+                            modifier = Modifier.padding(20.dp)
+                        ) {
+
+                            Text(
+                                text = "Матни сура",
+                                color = Gold,
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(8.dp)
+                            )
+
+                            Text(
+                                text = "Матни ин сура дар бастаи офлайнии ҳозира ҳанӯз ворид нашудааст.",
+                                color = SoftWhite,
+                                fontSize = 14.sp
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(8.dp)
+                            )
+
+                            Text(
+                                text = "Рӯйхати ҳамаи 114 сура дастрас аст.",
+                                color = White,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+
+            } else {
+
+                items(ayahs) { ayah ->
+
+                    AyahCard(ayah)
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun AyahCard(
+    ayah: QuranAyah
+) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = CardGreen
         )
     ) {
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.padding(18.dp)
         ) {
 
             Text(
-                text = "📿 Тасбеҳ",
+                text = ayah.arabic,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.End,
                 color = White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
+                fontSize = 24.sp,
+                lineHeight = 38.sp
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = count.toString(),
-                color = Gold,
-                fontSize = 42.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                verticalAlignment = Alignment.Top
             ) {
 
-                Button(
-                    onClick = {
-                        count++
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Gold,
-                        contentColor = DarkGreen
-                    )
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .background(
+                            Gold,
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Зикр +1")
+
+                    Text(
+                        text = ayah.number.toString(),
+                        color = DarkGreen,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
-                OutlinedButton(
-                    onClick = {
-                        count = 0
-                    }
-                ) {
-                    Text(
-                        text = "Аз нав",
-                        color = White
-                    )
-                }
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Text(
+                    text = ayah.tajik,
+                    color = SoftWhite,
+                    fontSize = 15.sp,
+                    lineHeight = 23.sp
+                )
             }
         }
     }
@@ -921,61 +1198,6 @@ fun PrayerInfoCard(
 }
 
 @Composable
-fun QuranScreen() {
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(18.dp)
-    ) {
-
-        ScreenTitle(
-            title = "📖 Қуръон",
-            subtitle = "Қуръони Карим"
-        )
-
-        Spacer(modifier = Modifier.height(15.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = CardGreen
-            )
-        ) {
-
-            Column(
-                modifier = Modifier.padding(20.dp)
-            ) {
-
-                Text(
-                    text = "Қуръони Карим",
-                    color = Gold,
-                    fontSize = 21.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "Сураҳо, оятҳо, матни арабӣ ва тарҷумаи тоҷикӣ.",
-                    color = SoftWhite,
-                    fontSize = 15.sp
-                )
-
-                Spacer(modifier = Modifier.height(15.dp))
-
-                Text(
-                    text = "Ин бахш дар версияи аввал омода мешавад.",
-                    color = White,
-                    fontSize = 14.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun QiblaScreen() {
 
     Column(
@@ -1021,7 +1243,7 @@ fun QiblaScreen() {
                 )
 
                 Text(
-                    text = "Компас дар версияи пурра",
+                    text = "Самти Каъба",
                     color = SoftWhite,
                     fontSize = 12.sp
                 )
@@ -1035,6 +1257,79 @@ fun QiblaScreen() {
             color = White,
             fontSize = 16.sp
         )
+    }
+}
+
+@Composable
+fun TasbehCard() {
+
+    var count by remember {
+        mutableStateOf(0)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = CardGreen
+        )
+    ) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+
+            Text(
+                text = "📿 Тасбеҳ",
+                color = White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = count.toString(),
+                color = Gold,
+                fontSize = 42.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+
+                Button(
+                    onClick = {
+                        count++
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = DarkGreen
+                    )
+                ) {
+
+                    Text("Зикр +1")
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        count = 0
+                    }
+                ) {
+
+                    Text(
+                        text = "Аз нав",
+                        color = White
+                    )
+                }
+            }
+        }
     }
 }
 
