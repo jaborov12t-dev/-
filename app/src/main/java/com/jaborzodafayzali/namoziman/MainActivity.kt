@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,31 +19,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import java.util.Calendar
-import java.util.TimeZone
+import kotlin.math.max
 
-data class AppLocation(
-    val city: String,
-    val country: String,
-    val latitude: Double,
-    val longitude: Double
-)
+private val DarkGreen = Color(0xFF071C18)
+private val CardGreen = Color(0xFF102923)
+private val Gold = Color(0xFFD6B56A)
+private val White = Color(0xFFF5F3EA)
+private val SoftWhite = Color(0xFFBFC8C3)
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var locationHelper: LocationHelper
 
-    private val locationPermission =
+    private val locationPermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
-        ) { result ->
+        ) { permissions ->
 
             val granted =
-                result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+                permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
             if (granted) {
                 loadLocation()
@@ -55,107 +56,76 @@ class MainActivity : ComponentActivity() {
         locationHelper = LocationHelper(this)
 
         setContent {
-            NamozimanApp()
+            NamozimanApp(
+                requestLocation = {
+                    requestLocationPermission()
+                }
+            )
         }
 
-        if (hasLocationPermission()) {
+        if (locationHelper.hasPermission()) {
             loadLocation()
-        } else {
-            locationPermission.launch(
+        }
+    }
+
+    private fun requestLocationPermission() {
+
+        if (!locationHelper.hasPermission()) {
+
+            locationPermissionLauncher.launch(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
                     Manifest.permission.ACCESS_COARSE_LOCATION
                 )
             )
+        } else {
+            loadLocation()
         }
-    }
-
-    private fun hasLocationPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED ||
-        ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun loadLocation() {
 
         locationHelper.getLocation { location ->
 
-            if (location == null) return@getLocation
+            if (location != null) {
 
-            val timezone =
-                TimeZone.getDefault().rawOffset / 3600000.0
-
-            prayerTimes =
-                PrayerTimesCalculator.calculate(
-                    latitude = location.latitude,
-                    longitude = location.longitude,
-                    timezone = timezone,
-                    date = Calendar.getInstance()
+                val city = CityHelper.getCity(
+                    this,
+                    location.latitude,
+                    location.longitude
                 )
 
-            val city = CityHelper.getCity(
-                this,
-                location.latitude,
-                location.longitude
-            )
-
-            appLocation = AppLocation(
-                city = city.city,
-                country = city.country,
-                latitude = location.latitude,
-                longitude = location.longitude
-            )
+                // Ҷойгиршавӣ баъдтар ба ҳолати асосии барнома
+                // пайваст карда мешавад.
+            }
         }
-    }
-
-    companion object {
-
-        var prayerTimes by mutableStateOf(
-            PrayerTimes(
-                fajr = "--:--",
-                dhuhr = "--:--",
-                asr = "--:--",
-                maghrib = "--:--",
-                isha = "--:--"
-            )
-        )
-
-        var appLocation by mutableStateOf(
-            AppLocation(
-                city = "Муайян карда мешавад",
-                country = "",
-                latitude = 0.0,
-                longitude = 0.0
-            )
-        )
     }
 }
 
 @Composable
-fun NamozimanApp() {
+fun NamozimanApp(
+    requestLocation: () -> Unit
+) {
 
-    val dark = Color(0xFF071C18)
-    val green = Color(0xFF0B3D32)
-    val gold = Color(0xFFD4AF37)
-    val gray = Color(0xFFB8C5C1)
-
-    var currentScreen by remember {
+    var selectedScreen by remember {
         mutableStateOf(AppScreen.HOME)
     }
 
-    val location = MainActivity.appLocation
-    val times = MainActivity.prayerTimes
+    var showNames by remember {
+        mutableStateOf(false)
+    }
 
-    MaterialTheme {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Gold,
+            background = DarkGreen,
+            surface = CardGreen
+        )
+    ) {
 
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = dark
+            color = DarkGreen
         ) {
 
             Column(
@@ -163,63 +133,72 @@ fun NamozimanApp() {
             ) {
 
                 Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                    modifier = Modifier.weight(1f)
                 ) {
 
-                    when (currentScreen) {
+                    when {
+                        showNames -> {
 
-                        AppScreen.HOME -> {
+                            NamesOfAllahScreen(
+                                onBack = {
+                                    showNames = false
+                                }
+                            )
+                        }
+
+                        selectedScreen == AppScreen.HOME -> {
+
                             HomeScreen(
-                                location = location,
-                                times = times,
-                                green = green,
-                                gold = gold,
-                                gray = gray
+                                onNamoz = {
+                                    selectedScreen = AppScreen.NAMOZ
+                                },
+                                onQuran = {
+                                    selectedScreen = AppScreen.QURAN
+                                },
+                                onDuas = {
+                                    selectedScreen = AppScreen.DUAS
+                                },
+                                onQibla = {
+                                    selectedScreen = AppScreen.QIBLA
+                                },
+                                onNames = {
+                                    showNames = true
+                                },
+                                onLocation = requestLocation
                             )
                         }
 
-                        AppScreen.NAMOZ -> {
-                            NamozScreen(
-                                times = times,
-                                green = green,
-                                gold = gold
-                            )
+                        selectedScreen == AppScreen.NAMOZ -> {
+
+                            NamozScreen()
                         }
 
-                        AppScreen.QURAN -> {
-                            QuranScreen(
-                                green = green,
-                                gold = gold
-                            )
+                        selectedScreen == AppScreen.QURAN -> {
+
+                            QuranScreen()
                         }
 
-                        AppScreen.DUAS -> {
-                            DuasScreen(
-                                green = green,
-                                gold = gold
-                            )
+                        selectedScreen == AppScreen.DUAS -> {
+
+                            DuasScreen()
                         }
 
-                        AppScreen.QIBLA -> {
-                            QiblaScreen(
-                                location = location,
-                                green = green,
-                                gold = gold
-                            )
+                        selectedScreen == AppScreen.QIBLA -> {
+
+                            QiblaScreen()
                         }
                     }
                 }
 
-                BottomNavigationBar(
-                    currentScreen = currentScreen,
-                    onScreenSelected = {
-                        currentScreen = it
-                    },
-                    green = green,
-                    gold = gold
-                )
+                if (!showNames) {
+
+                    BottomNavigationBar(
+                        selectedScreen = selectedScreen,
+                        onSelect = {
+                            selectedScreen = it
+                        }
+                    )
+                }
             }
         }
     }
@@ -227,460 +206,887 @@ fun NamozimanApp() {
 
 @Composable
 fun HomeScreen(
-    location: AppLocation,
-    times: PrayerTimes,
-    green: Color,
-    gold: Color,
-    gray: Color
+    onNamoz: () -> Unit,
+    onQuran: () -> Unit,
+    onDuas: () -> Unit,
+    onQibla: () -> Unit,
+    onNames: () -> Unit,
+    onLocation: () -> Unit
 ) {
+
+    val calendar = Calendar.getInstance()
+
+    val prayerTimes = remember {
+
+        PrayerTimesCalculator.calculate(
+            latitude = 38.5598,
+            longitude = 68.7870,
+            timezone = 5.0,
+            date = calendar
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
 
         item {
-            Spacer(modifier = Modifier.height(28.dp))
-
-            Text(
-                text = "Намози Ман 🕌",
-                color = gold,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = "Ассалому алайкум 🤍",
-                color = Color.White,
-                fontSize = 20.sp
+                color = White,
+                fontSize = 27.sp,
+                fontWeight = FontWeight.Bold
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onLocation()
+                    },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Text(
+                    text = "📍 Душанбе, Тоҷикистон 🇹🇯",
+                    color = SoftWhite,
+                    fontSize = 15.sp
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                Text(
+                    text = "Тағйир",
+                    color = Gold,
+                    fontSize = 13.sp
+                )
+            }
+        }
+
+        item {
+
+            NextPrayerCard(
+                prayerName = "ШОМ",
+                prayerTime = prayerTimes.maghrib
+            )
+        }
+
+        item {
+
             Text(
-                text = "${location.city}, ${location.country} 📍",
-                color = gray,
-                fontSize = 15.sp
+                text = "Вақти намоз",
+                color = White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        item {
+
+            PrayerTimesCard(
+                prayerTimes = prayerTimes
+            )
+        }
+
+        item {
+
+            Text(
+                text = "Хизматҳо",
+                color = White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        item {
+
+            ServiceGrid(
+                onNamoz = onNamoz,
+                onQuran = onQuran,
+                onDuas = onDuas,
+                onQibla = onQibla
+            )
+        }
+
+        item {
+
+            ServiceButton(
+                icon = "☪",
+                title = "99 номи Аллоҳ",
+                subtitle = "Асмоул Ҳусно",
+                onClick = onNames
+            )
+        }
+
+        item {
+
+            TasbehCard()
+        }
+
+        item {
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "Намози Ман",
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+                color = Gold,
+                fontSize = 13.sp
             )
 
-            Spacer(modifier = Modifier.height(22.dp))
-
-            Card(
+            Text(
+                text = "JABORZODA FAYZALI",
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = green
-                )
+                textAlign = TextAlign.Center,
+                color = SoftWhite,
+                fontSize = 10.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun NextPrayerCard(
+    prayerName: String,
+    prayerTime: String
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = CardGreen
+        )
+    ) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(22.dp)
+        ) {
+
+            Text(
+                text = "Намози навбатӣ",
+                color = SoftWhite,
+                fontSize = 14.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically
             ) {
 
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(22.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier.weight(1f)
                 ) {
 
                     Text(
-                        text = "Намози навбатӣ",
-                        color = gray,
-                        fontSize = 15.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(7.dp))
-
-                    Text(
-                        text = "Имрӯз",
-                        color = gold,
-                        fontSize = 18.sp,
+                        text = prayerName,
+                        color = Gold,
+                        fontSize = 27.sp,
                         fontWeight = FontWeight.Bold
                     )
 
-                    Spacer(modifier = Modifier.height(5.dp))
+                    Text(
+                        text = "То намози навбатӣ",
+                        color = SoftWhite,
+                        fontSize = 13.sp
+                    )
+                }
+
+                Text(
+                    text = prayerTime,
+                    color = White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PrayerTimesCard(
+    prayerTimes: PrayerTimes
+) {
+
+    val prayers = listOf(
+        "Бомдод" to prayerTimes.fajr,
+        "Пешин" to prayerTimes.dhuhr,
+        "Аср" to prayerTimes.asr,
+        "Шом" to prayerTimes.maghrib,
+        "Хуфтан" to prayerTimes.isha
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = CardGreen
+        )
+    ) {
+
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+
+            prayers.forEach { prayer ->
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
 
                     Text(
-                        text = "Вақти намоз",
-                        color = Color.White,
-                        fontSize = 28.sp,
+                        text = prayer.first,
+                        color = White,
+                        fontSize = 16.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Text(
+                        text = prayer.second,
+                        color = Gold,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(18.dp))
+@Composable
+fun ServiceGrid(
+    onNamoz: () -> Unit,
+    onQuran: () -> Unit,
+    onDuas: () -> Unit,
+    onQibla: () -> Unit
+) {
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+
+            ServiceButton(
+                icon = "🕌",
+                title = "Намоз",
+                subtitle = "Тарзи хондан",
+                onClick = onNamoz,
+                modifier = Modifier.weight(1f)
+            )
+
+            ServiceButton(
+                icon = "📖",
+                title = "Қуръон",
+                subtitle = "Сураҳо",
+                onClick = onQuran,
+                modifier = Modifier.weight(1f)
+            )
         }
 
-        item {
-            PrayerTime("Бомдод", times.fajr, gold)
-            PrayerTime("Пешин", times.dhuhr, gold)
-            PrayerTime("Аср", times.asr, gold)
-            PrayerTime("Шом", times.maghrib, gold)
-            PrayerTime("Хуфтан", times.isha, gold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
 
-            Spacer(modifier = Modifier.height(20.dp))
+            ServiceButton(
+                icon = "🤲",
+                title = "Дуоҳо",
+                subtitle = "Зикрҳо",
+                onClick = onDuas,
+                modifier = Modifier.weight(1f)
+            )
+
+            ServiceButton(
+                icon = "🧭",
+                title = "Қибла",
+                subtitle = "Самти Каъба",
+                onClick = onQibla,
+                modifier = Modifier.weight(1f)
+            )
         }
+    }
+}
 
-        item {
+@Composable
+fun ServiceButton(
+    icon: String,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+
+    Card(
+        modifier = modifier
+            .height(105.dp)
+            .clickable {
+                onClick()
+            },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = CardGreen
+        )
+    ) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(15.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+
             Text(
-                text = "Хидматҳо",
-                modifier = Modifier.fillMaxWidth(),
-                color = Color.White,
-                fontSize = 21.sp,
+                text = icon,
+                fontSize = 27.sp
+            )
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            Text(
+                text = title,
+                color = White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+
+            Text(
+                text = subtitle,
+                color = SoftWhite,
+                fontSize = 11.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun TasbehCard() {
+
+    var count by remember {
+        mutableStateOf(0)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = CardGreen
+        )
+    ) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+
+            Text(
+                text = "📿 Тасбеҳ",
+                color = White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = count.toString(),
+                color = Gold,
+                fontSize = 42.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+
+                Button(
+                    onClick = {
+                        count++
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = DarkGreen
+                    )
+                ) {
+                    Text("Зикр +1")
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        count = 0
+                    }
+                ) {
+                    Text(
+                        text = "Аз нав",
+                        color = White
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DuasScreen() {
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+
+        item {
+
+            ScreenTitle(
+                title = "🤲 Дуоҳо",
+                subtitle = "Дуоҳои муҳим барои ҳар рӯз"
+            )
+        }
+
+        items(IslamicData.duas) { dua ->
+
+            DuaCard(dua)
+        }
+    }
+}
+
+@Composable
+fun DuaCard(
+    dua: DuaItem
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = CardGreen
+        )
+    ) {
+
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
+
+            Text(
+                text = dua.title,
+                color = Gold,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
+            Text(
+                text = dua.arabic,
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                HomeFeatureCard(
-                    "🕌",
-                    "Намоз",
-                    Modifier.weight(1f),
-                    green,
-                    gold
+                textAlign = TextAlign.End,
+                color = White,
+                fontSize = 22.sp
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = dua.tajik,
+                color = SoftWhite,
+                fontSize = 15.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun NamesOfAllahScreen(
+    onBack: () -> Unit
+) {
+
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ) {
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Text(
+                text = "‹",
+                color = Gold,
+                fontSize = 38.sp,
+                modifier = Modifier.clickable {
+                    onBack()
+                }
+            )
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column {
+
+                Text(
+                    text = "99 номи Аллоҳ",
+                    color = White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
                 )
 
-                HomeFeatureCard(
-                    "📖",
-                    "Қуръон",
-                    Modifier.weight(1f),
-                    green,
-                    gold
+                Text(
+                    text = "Асмоул Ҳусно",
+                    color = SoftWhite,
+                    fontSize = 13.sp
+                )
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+
+            items(IslamicData.namesOfAllah) { name ->
+
+                AllahNameCard(name)
+            }
+        }
+    }
+}
+
+@Composable
+fun AllahNameCard(
+    name: AllahName
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = CardGreen
+        )
+    ) {
+
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(
+                        Gold,
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+
+                Text(
+                    text = name.number.toString(),
+                    color = DarkGreen,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+
+                Text(
+                    text = name.arabic,
+                    color = White,
+                    fontSize = 22.sp
+                )
+
+                Text(
+                    text = name.transliteration,
+                    color = Gold,
+                    fontSize = 13.sp
+                )
+
+                Text(
+                    text = name.tajik,
+                    color = SoftWhite,
+                    fontSize = 13.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NamozScreen() {
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+
+        item {
+
+            ScreenTitle(
+                title = "🕌 Намоз",
+                subtitle = "Намозҳои панҷвақта"
+            )
+        }
+
+        items(NamozData.prayers) { prayer ->
+
+            PrayerInfoCard(prayer)
+        }
+    }
+}
+
+@Composable
+fun PrayerInfoCard(
+    prayer: NamozInfo
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = CardGreen
+        )
+    ) {
+
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+
+                    Text(
+                        text = prayer.name,
+                        color = Gold,
+                        fontSize = 21.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = prayer.arabicName,
+                        color = White,
+                        fontSize = 19.sp
+                    )
+                }
+
+                Text(
+                    text = prayer.rakats,
+                    color = Gold,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.End
                 )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                HomeFeatureCard(
-                    "🤲",
-                    "Дуоҳо",
-                    Modifier.weight(1f),
-                    green,
-                    gold
-                )
-
-                HomeFeatureCard(
-                    "🧭",
-                    "Қибла",
-                    Modifier.weight(1f),
-                    green,
-                    gold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(25.dp))
-        }
-    }
-}
-
-@Composable
-fun NamozScreen(
-    times: PrayerTimes,
-    green: Color,
-    gold: Color
-) {
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
-    ) {
-
-        item {
-
             Text(
-                text = "Намоз 🕌",
-                color = gold,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Вақтҳои намоз ва маълумот",
-                color = Color.LightGray,
-                fontSize = 15.sp
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-        }
-
-        item {
-            PrayerLargeCard(
-                "Бомдод",
-                "05:12",
-                "2 суннат + 2 фарз",
-                times.fajr,
-                green,
-                gold
-            )
-
-            PrayerLargeCard(
-                "Пешин",
-                "12:40",
-                "4 суннат + 4 фарз + 2 суннат",
-                times.dhuhr,
-                green,
-                gold
-            )
-
-            PrayerLargeCard(
-                "Аср",
-                "16:25",
-                "4 суннат + 4 фарз",
-                times.asr,
-                green,
-                gold
-            )
-
-            PrayerLargeCard(
-                "Шом",
-                "18:42",
-                "3 фарз + 2 суннат",
-                times.maghrib,
-                green,
-                gold
-            )
-
-            PrayerLargeCard(
-                "Хуфтан",
-                "20:10",
-                "4 фарз + 2 суннат + 3 витр",
-                times.isha,
-                green,
-                gold
+                text = prayer.description,
+                color = SoftWhite,
+                fontSize = 14.sp
             )
         }
     }
 }
 
 @Composable
-fun QuranScreen(
-    green: Color,
-    gold: Color
-) {
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
-    ) {
-
-        item {
-
-            Text(
-                text = "Қуръон 📖",
-                color = gold,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Сураҳои Қуръони Карим",
-                color = Color.LightGray,
-                fontSize = 15.sp
-            )
-
-            Spacer(modifier = Modifier.height(18.dp))
-        }
-
-        items(
-            listOf(
-                "1. Ал-Фотиҳа",
-                "2. Ал-Бақара",
-                "3. Оли Имрон",
-                "4. Ан-Нисо",
-                "5. Ал-Моида",
-                "6. Ал-Анъом",
-                "7. Ал-Аъроф",
-                "8. Ал-Анфол",
-                "9. Ат-Тавба",
-                "10. Юнус"
-            )
-        ) { surah ->
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = green
-                )
-            ) {
-
-                Text(
-                    text = surah,
-                    modifier = Modifier.padding(18.dp),
-                    color = Color.White,
-                    fontSize = 17.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun DuasScreen(
-    green: Color,
-    gold: Color
-) {
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
-    ) {
-
-        item {
-
-            Text(
-                text = "Дуоҳо 🤲",
-                color = gold,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(18.dp))
-        }
-
-        items(
-            listOf(
-                "Дуои саҳар",
-                "Дуо пеш аз хоб",
-                "Дуо пеш аз хӯрок",
-                "Дуо баъд аз хӯрок",
-                "Дуо барои падару модар",
-                "Дуои сафар",
-                "Дуои истиғфор",
-                "Дуои муҳофизат"
-            )
-        ) { dua ->
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 5.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = green
-                )
-            ) {
-
-                Text(
-                    text = dua,
-                    modifier = Modifier.padding(18.dp),
-                    color = Color.White,
-                    fontSize = 17.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun QiblaScreen(
-    location: AppLocation,
-    green: Color,
-    gold: Color
-) {
+fun QuranScreen() {
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(18.dp)
     ) {
 
-        Text(
-            text = "Қибла 🧭",
-            color = gold,
-            fontSize = 30.sp,
-            fontWeight = FontWeight.Bold
+        ScreenTitle(
+            title = "📖 Қуръон",
+            subtitle = "Қуръони Карим"
         )
 
-        Spacer(modifier = Modifier.height(25.dp))
+        Spacer(modifier = Modifier.height(15.dp))
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(
-                containerColor = green
+                containerColor = CardGreen
             )
         ) {
 
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(30.dp),
+                modifier = Modifier.padding(20.dp)
+            ) {
+
+                Text(
+                    text = "Қуръони Карим",
+                    color = Gold,
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Сураҳо, оятҳо, матни арабӣ ва тарҷумаи тоҷикӣ.",
+                    color = SoftWhite,
+                    fontSize = 15.sp
+                )
+
+                Spacer(modifier = Modifier.height(15.dp))
+
+                Text(
+                    text = "Ин бахш дар версияи аввал омода мешавад.",
+                    color = White,
+                    fontSize = 14.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun QiblaScreen() {
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+
+        ScreenTitle(
+            title = "🧭 Қибла",
+            subtitle = "Самти Каъба"
+        )
+
+        Spacer(modifier = Modifier.height(35.dp))
+
+        Box(
+            modifier = Modifier
+                .size(250.dp)
+                .background(
+                    CardGreen,
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+
+            Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
                 Text(
                     text = "🕋",
-                    fontSize = 70.sp
+                    fontSize = 65.sp
                 )
 
-                Spacer(modifier = Modifier.height(15.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Самти Қибла",
-                    color = Color.White,
+                    text = "Қибла",
+                    color = Gold,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
                 Text(
-                    text = "Барои муайян кардани самти дақиқи Қибла компаси телефон истифода мешавад.",
-                    color = Color.LightGray,
-                    fontSize = 14.sp
-                )
-
-                Spacer(modifier = Modifier.height(15.dp))
-
-                Text(
-                    text = "${location.city}, ${location.country}",
-                    color = gold,
-                    fontSize = 16.sp
+                    text = "Компас дар версияи пурра",
+                    color = SoftWhite,
+                    fontSize = 12.sp
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(25.dp))
+
+        Text(
+            text = "Телефонро ҳамвор нигоҳ доред.",
+            color = White,
+            fontSize = 16.sp
+        )
+    }
+}
+
+@Composable
+fun ScreenTitle(
+    title: String,
+    subtitle: String
+) {
+
+    Column {
+
+        Text(
+            text = title,
+            color = White,
+            fontSize = 27.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = subtitle,
+            color = SoftWhite,
+            fontSize = 14.sp
+        )
     }
 }
 
 @Composable
 fun BottomNavigationBar(
-    currentScreen: AppScreen,
-    onScreenSelected: (AppScreen) -> Unit,
-    green: Color,
-    gold: Color
+    selectedScreen: AppScreen,
+    onSelect: (AppScreen) -> Unit
 ) {
 
     NavigationBar(
-        containerColor = Color(0xFF061611)
+        containerColor = Color(0xFF061512)
     ) {
 
-        AppScreen.values().forEach { screen ->
+        val screens = listOf(
+            AppScreen.HOME,
+            AppScreen.NAMOZ,
+            AppScreen.QURAN,
+            AppScreen.DUAS,
+            AppScreen.QIBLA
+        )
+
+        screens.forEach { screen ->
 
             NavigationBarItem(
-                selected = currentScreen == screen,
+                selected = selectedScreen == screen,
                 onClick = {
-                    onScreenSelected(screen)
+                    onSelect(screen)
                 },
                 icon = {
                     Text(
@@ -691,138 +1097,16 @@ fun BottomNavigationBar(
                 label = {
                     Text(
                         text = screen.title,
-                        fontSize = 11.sp
+                        fontSize = 10.sp
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = gold,
-                    selectedTextColor = gold,
-                    indicatorColor = green,
-                    unselectedIconColor = Color.LightGray,
-                    unselectedTextColor = Color.LightGray
+                    selectedIconColor = Gold,
+                    selectedTextColor = Gold,
+                    unselectedIconColor = SoftWhite,
+                    unselectedTextColor = SoftWhite,
+                    indicatorColor = CardGreen
                 )
-            )
-        }
-    }
-}
-
-@Composable
-fun PrayerTime(
-    name: String,
-    time: String,
-    gold: Color
-) {
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 5.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-
-        Text(
-            text = name,
-            color = Color.White,
-            fontSize = 17.sp
-        )
-
-        Text(
-            text = time,
-            color = gold,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
-fun PrayerLargeCard(
-    name: String,
-    exampleTime: String,
-    rakats: String,
-    actualTime: String,
-    green: Color,
-    gold: Color
-) {
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = green
-        )
-    ) {
-
-        Column(
-            modifier = Modifier.padding(18.dp)
-        ) {
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-
-                Text(
-                    text = name,
-                    color = Color.White,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    text = actualTime,
-                    color = gold,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(7.dp))
-
-            Text(
-                text = rakats,
-                color = Color.LightGray,
-                fontSize = 14.sp
-            )
-        }
-    }
-}
-
-@Composable
-fun HomeFeatureCard(
-    icon: String,
-    title: String,
-    modifier: Modifier,
-    green: Color,
-    gold: Color
-) {
-
-    Card(
-        modifier = modifier.height(85.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = green
-        )
-    ) {
-
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-
-            Text(
-                text = icon,
-                fontSize = 25.sp
-            )
-
-            Text(
-                text = title,
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
             )
         }
     }
